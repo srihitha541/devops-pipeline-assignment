@@ -1,78 +1,401 @@
-# DockerProject - ECS Fargate Deployment
+# Dockerized Node.js Application Deployment on AWS ECS Fargate using Terraform
 
-## Project Overview
-This repository contains a production-ready Node.js service packaged as a Docker image and deployed on AWS ECS Fargate behind an Application Load Balancer. Infrastructure is provisioned with Terraform and deployments are automated with GitHub Actions.
+## 1. Project Overview
+This project deploys a small Express application to AWS ECS Fargate behind an Application Load Balancer. I built the infrastructure with Terraform and wired deployment through GitHub Actions so a push to `main` builds the container image, pushes it to ECR, and updates the ECS service.
 
-## Architecture
-- Source control: GitHub
-- CI/CD: GitHub Actions
-- Container registry: Amazon ECR
-- Compute: Amazon ECS Fargate (2 tasks, multi-AZ)
-- Load balancing: Application Load Balancer
-- Logging: CloudWatch Log Group
-- Monitoring: CloudWatch CPU/Memory alarms
+The app itself is intentionally simple. It exposes `GET /` and returns:
 
-See the detailed architecture in [docs/architecture.md](docs/architecture.md) and the diagram in [docs/architecture-diagram.drawio](docs/architecture-diagram.drawio).
+```json
+{ "status": "running" }
+```
 
-## Prerequisites
-- AWS account with permissions to create VPC, ECS, ECR, IAM, ALB, and CloudWatch
-- AWS CLI configured locally
-- Terraform >= 1.5
-- Node.js 20+
-- Docker
+There is also a `GET /health` endpoint that the ALB uses for health checks.
 
-## AWS Setup
-1. Create an IAM user or role with permissions for ECS, ECR, EC2 networking, IAM, ALB, and CloudWatch.
-2. Configure AWS CLI:
-   - `aws configure`
+## 2. Solution Architecture
+The design keeps the public entry point at the ALB and runs the ECS tasks in private subnets. That gives the service a clean network boundary and keeps the container tasks out of direct internet exposure.
 
-## Local Development
-From the app directory:
-1. `npm install`
-2. `npm start`
-3. Test endpoints:
-   - `Invoke-WebRequest -UseBasicParsing http://localhost:3000/ | Select-Object -ExpandProperty Content`
-   - `Invoke-WebRequest -UseBasicParsing http://localhost:3000/health | Select-Object -ExpandProperty Content`
+Why I set it up this way:
+- The ALB handles inbound traffic on port 80.
+- ECS tasks run with no public IPs.
+- The tasks still reach ECR, CloudWatch, and the internet through a NAT gateway.
+- Terraform owns the full stack, so the environment can be recreated from scratch.
 
-## Docker Build
-From the repository root:
-1. `docker build -f app/Dockerfile -t dockerproject-app:local app`
-2. `docker run -p 3000:3000 dockerproject-app:local`
+### Mermaid Architecture Diagram
+```mermaid
+flowchart LR
+    U[User / Browser] -->|HTTP 80| ALB[Application Load Balancer]
+    ALB --> TG[Target Group]
+    TG --> ECS[ECS Fargate Service]
+    ECS --> TASK1[Task in Private Subnet AZ1]
+    ECS --> TASK2[Task in Private Subnet AZ2]
+    TASK1 --> CW[CloudWatch Logs]
+    TASK2 --> CW
+    TASK1 --> ECR[ECR Repository]
+    TASK2 --> ECR
+    ECS --> IAM[IAM Roles and Policies]
+    TF[Terraform] --> VPC[VPC + Public/Private Subnets]
+    TF --> ALB
+    TF --> ECS
+    TF --> ECR
+    TF --> CW
+```
 
-## Terraform Deployment
-From the terraform directory:
-1. `terraform init`
-2. `terraform validate`
-3. `terraform plan -out=tfplan`
-4. `terraform apply tfplan`
+## 3. Architecture Diagram
+The repository also includes a draw.io version of the architecture in [docs/architecture-diagram.drawio](docs/architecture-diagram.drawio) and a short written overview in [docs/architecture.md](docs/architecture.md).
 
-Terraform outputs will include the ALB DNS name, ECS cluster/service names, and the ECR repository URL.
+## 4. Repository Structure
+```text
+DockerProject/
+├── app/
+│   ├── app.js
+│   ├── package.json
+│   ├── package-lock.json
+│   └── Dockerfile
+├── terraform/
+│   ├── provider.tf
+│   ├── networking.tf
+│   ├── security.tf
+│   ├── iam.tf
+│   ├── ecr.tf
+│   ├── ecs.tf
+│   ├── alb.tf
+│   ├── cloudwatch.tf
+│   ├── outputs.tf
+│   └── terraform.tfvars.example
+├── docs/
+│   ├── architecture-diagram.drawio
+│   └── architecture.md
+└── .github/workflows/
+    └── deploy.yml
+```
 
-## ECR
-After Terraform creates the ECR repo:
-1. Authenticate Docker:
-   - `aws ecr get-login-password --region <region> | docker login --username AWS --password-stdin <account-id>.dkr.ecr.<region>.amazonaws.com`
-2. Build and push:
-   - `docker build -f app/Dockerfile -t <ecr-url>:latest app`
-   - `docker push <ecr-url>:latest`
+## 5. Infrastructure Components
+The Terraform configuration creates the following:
 
-## ECS
-The ECS service runs in private subnets and is fronted by an ALB. It uses rolling deployments and a deployment circuit breaker for automatic rollback.
+- VPC with DNS support enabled
+- Two public subnets for the ALB and NAT gateway
+- Two private subnets for ECS tasks
+- Internet Gateway
+- Public and private route tables
+- NAT gateway for outbound access from private subnets
+- Security groups for the ALB and ECS tasks
+- ECR repository for application images
+- ECS cluster
+- ECS task definition
+- ECS service on Fargate
+- Application Load Balancer and target group
+- CloudWatch log group
+- CloudWatch CPU and memory alarms
+- IAM execution and task roles
 
-## GitHub Actions
-Pipeline stages:
-1. Checkout
-2. Setup Node.js
-3. Install dependencies
-4. Lint
-5. Unit tests
-6. Build Docker image
-7. Configure AWS credentials
-8. Login to ECR
-9. Push Docker image
-10. Register new task definition
-11. Update ECS service
-12. Wait for stable deployment
+## 6. Prerequisites
+Before deploying, make sure the following are available locally:
+
+- AWS account with permissions for VPC, ECS, ECR, IAM, ALB, CloudWatch, and related networking resources
+- AWS CLI configured with credentials that can create and update those resources
+- Terraform `>= 1.5.0`
+- Node.js `20` or later
+- Docker Desktop or another Docker engine
+
+### Example AWS CLI setup
+```bash
+aws configure
+```
+
+## 7. Local Application Setup
+Run the app locally from the `app` directory.
+
+```bash
+cd app
+npm install
+npm start
+```
+
+Test the endpoints in another terminal:
+
+```bash
+curl http://localhost:3000/
+curl http://localhost:3000/health
+```
+
+Expected responses:
+
+```json
+{ "status": "running" }
+```
+
+```json
+{ "health": "ok" }
+```
+
+## 8. Docker Build and Test
+The Dockerfile installs production dependencies, runs the container as the `node` user, and exposes port `3000`.
+
+Build the image from the repository root:
+
+```bash
+docker build -f app/Dockerfile -t dockerproject-app:local app
+```
+
+Run the container:
+
+```bash
+docker run --rm -p 3000:3000 dockerproject-app:local
+```
+
+Verify the container:
+
+```bash
+curl http://localhost:3000/
+curl http://localhost:3000/health
+```
+
+## 9. Terraform Deployment Steps
+The infrastructure is defined under `terraform/`. I used a separate Terraform directory so the app code and infrastructure code stay split cleanly.
+
+```bash
+cd terraform
+terraform init
+terraform validate
+terraform plan -out=tfplan
+terraform apply tfplan
+```
+
+If you want to supply your own values, copy the example file first:
+
+```bash
+copy terraform.tfvars.example terraform.tfvars
+```
+
+Useful outputs after apply:
+
+- `alb_dns_name`
+- `ecr_repository_url`
+- `ecs_cluster_name`
+- `ecs_service_name`
+- `ecs_task_family`
+- `ecs_container_name`
+
+## 10. Container Deployment Process
+The deployment flow is straightforward:
+
+1. Build the app image.
+2. Push the image to ECR.
+3. Register a new ECS task definition revision with the new image tag.
+4. Update the ECS service to point to the new revision.
+5. Wait for the service to become stable.
+
+### Mermaid Deployment Workflow
+```mermaid
+flowchart TD
+    A[Push to main] --> B[GitHub Actions starts]
+    B --> C[Install dependencies]
+    C --> D[Run lint]
+    D --> E[Run unit tests]
+    E --> F[Build Docker image]
+    F --> G[Login to ECR]
+    G --> H[Push image to ECR]
+    H --> I[Register new ECS task definition]
+    I --> J[Update ECS service]
+    J --> K[Wait for stable deployment]
+```
+
+## 11. ECS Service Configuration
+The ECS service is configured for Fargate with two running tasks by default.
+
+Key settings from Terraform:
+
+- `launch_type = "FARGATE"`
+- `desired_count = 2`
+- `network_mode = "awsvpc"`
+- Tasks placed in private subnets
+- `assign_public_ip = false`
+- Deployment circuit breaker enabled with rollback
+- Minimum healthy percent set to `50`
+- Maximum percent set to `200`
+
+I kept the task count at two because it gives the service a basic level of availability across two AZs without making the assignment more complicated than it needs to be.
+
+## 12. Load Balancer Configuration
+The ALB is internet-facing and listens on port `80`.
+
+Configuration details:
+
+- ALB lives in the public subnets
+- Security group allows inbound HTTP from `0.0.0.0/0`
+- Target group uses `ip` targets for Fargate tasks
+- Listener forwards traffic to the target group
+- Health check path is `/health`
+
+I used `/health` rather than `/` so the load balancer checks a lightweight endpoint that clearly shows the app is alive.
+
+## 13. Logging and Monitoring
+Container logs are sent to CloudWatch Logs with the `awslogs` driver.
+
+Details:
+
+- Log group: `/ecs/dockerproject`
+- Stream prefix: `ecs`
+- Retention: 14 days by default
+
+CloudWatch alarms are defined for:
+
+- ECS CPU utilization above 80%
+- ECS memory utilization above 80%
+
+If SNS topics are needed later, they can be attached through `alarm_actions` and `ok_actions`.
+
+### Useful log command
+```bash
+aws logs tail /ecs/dockerproject --since 1h --follow
+```
+
+## 14. Security Configuration
+The security setup is basic but sensible for this kind of assignment:
+
+- Only the ALB is public.
+- ECS tasks do not get public IPs.
+- The ECS security group only accepts traffic from the ALB security group on the app port.
+- IAM is split between the execution role and the task role.
+- The container runs as a non-root user in the image.
+- `x-powered-by` is disabled in Express.
+
+That keeps the app easy to operate without opening more network access than needed.
+
+## 15. Validation Steps
+I validated the stack in the following order:
+
+```bash
+cd app
+npm test
+npm run lint
+```
+
+```bash
+docker build -f app/Dockerfile -t dockerproject-app:local app
+docker run --rm -p 3000:3000 dockerproject-app:local
+```
+
+```bash
+cd terraform
+terraform validate
+terraform plan -out=tfplan
+terraform apply tfplan
+```
+
+### Validation Checklist
+- [ ] `GET /` returns `{ "status": "running" }`
+- [ ] `GET /health` returns `{ "health": "ok" }`
+- [ ] Docker image builds without errors
+- [ ] Container starts and listens on port `3000`
+- [ ] Terraform plan completes successfully
+- [ ] Terraform apply creates the VPC, ALB, ECS service, ECR repo, and CloudWatch resources
+- [ ] ECS tasks reach a healthy state
+- [ ] ALB target group shows healthy targets
+- [ ] Application is reachable through the ALB DNS name
+- [ ] CloudWatch logs show container startup and request logs
+
+## 16. Deployment Verification
+After deployment, I verified the service with the ALB DNS name from Terraform output.
+
+```bash
+curl http://<alb-dns-name>/
+curl http://<alb-dns-name>/health
+```
+
+What I checked:
+
+- The root path returns HTTP 200 with the running status JSON.
+- The health endpoint returns HTTP 200.
+- The ECS service shows running tasks.
+- The target group marks the tasks healthy.
+- CloudWatch contains the container logs.
+
+## 17. Troubleshooting Notes
+| Issue | What Usually Causes It | Fix |
+|---|---|---|
+| ALB returns `503 Service Unavailable` | ECS tasks are not healthy or the target group is pointing at the wrong path | Check the target group health check path and confirm the service has running tasks |
+| ECS task stops during startup | The container image is broken or the task cannot pull the image from ECR | Review the ECS service events and CloudWatch logs, then verify the image tag in the task definition |
+| `terraform apply` fails on IAM | The AWS credentials do not have enough permissions | Re-run with a role or user that can create IAM roles, ECS resources, ECR repositories, and VPC components |
+| GitHub Actions cannot push to ECR | Missing or incorrect GitHub secrets, or ECR repository name mismatch | Check the repository secrets and confirm `ECR_REPOSITORY` matches the Terraform output |
+| Tasks stay in `PENDING` | Networking or NAT gateway issue in the private subnets | Verify route tables, NAT gateway creation, and security group rules |
+| Logs are missing in CloudWatch | Task execution role is missing log permissions or the log group was not created | Check the execution role attachment and confirm the log group exists |
+| Browser cannot reach the app | Wrong ALB DNS name or listener not created | Recheck Terraform outputs and confirm the ALB listener is on port 80 |
+
+## 18. Screenshots
+These screenshots are included as placeholders for the submission. Each one should be captured after deployment to show the corresponding part of the stack.
+
+### Terraform apply
+![Terraform apply](docs/screenshots/terraform-apply.png)
+This shows that the infrastructure was applied successfully and the stack was created in AWS.
+
+### ECR repository
+![ECR repository](docs/screenshots/ecr-repository.png)
+This confirms the application image repository exists and is ready to receive pushed images.
+
+### ECS cluster
+![ECS cluster](docs/screenshots/ecs-cluster.png)
+This proves the ECS cluster was created by Terraform.
+
+### ECS service
+![ECS service](docs/screenshots/ecs-service.png)
+This shows the service definition, desired count, and deployment status.
+
+### Running tasks
+![Running tasks](docs/screenshots/running-tasks.png)
+This confirms that ECS launched the Fargate tasks and they reached a running state.
+
+### Target group health
+![Target group health](docs/screenshots/target-group-health.png)
+This shows the load balancer health checks passing for the container tasks.
+
+### ALB details
+![ALB details](docs/screenshots/alb-details.png)
+This shows the public entry point that routes traffic to the ECS service.
+
+### Application running
+![Application running](docs/screenshots/application-running.png)
+This proves the app responds from the ALB endpoint and returns the expected JSON.
+
+### CloudWatch logs
+![CloudWatch logs](docs/screenshots/cloudwatch-logs.png)
+This confirms container logs are reaching CloudWatch.
+
+### GitHub Actions
+![GitHub Actions](docs/screenshots/github-actions.png)
+This shows the CI/CD pipeline completing the build and deployment steps.
+
+## 19. Lessons Learned
+This project reinforced a few practical points:
+
+- Keeping the app and infrastructure in separate folders makes the repo easier to review.
+- A small health endpoint is worth adding early because it simplifies load balancer checks.
+- Running ECS tasks in private subnets is the safer default, even for a simple assignment.
+- GitHub Actions works well for this flow as long as the AWS secrets and ECS names stay aligned with Terraform outputs.
+- CloudWatch logs are the first place to check when a task fails before it becomes healthy.
+
+## 20. Possible Improvements
+If I were taking this beyond the assignment, I would probably do the following:
+
+- Switch GitHub Actions to OIDC instead of static AWS keys.
+- Add HTTPS on the ALB with ACM.
+- Add ECS service autoscaling based on CPU or request load.
+- Replace the NAT gateway with VPC endpoints where it makes sense.
+- Add a deployment stage for staged approval before pushing to `main`.
+- Add more API routes and real application tests.
+
+## Cleanup Instructions
+To remove everything created by Terraform:
+
+```bash
+cd terraform
+terraform destroy
+```
+
+If you pushed images to ECR during testing, you may also want to delete the repository after destroying the stack.
+
+## GitHub Actions Notes
+The workflow in [.github/workflows/deploy.yml](.github/workflows/deploy.yml) runs on pushes to `main` and on manual dispatch. It installs the app dependencies, runs lint and tests, builds the Docker image, pushes it to ECR, registers a new task definition, and updates the ECS service.
 
 ### Required GitHub Secrets
 - `AWS_ACCESS_KEY_ID`
@@ -84,53 +407,15 @@ Pipeline stages:
 - `ECS_TASK_FAMILY`
 - `ECS_CONTAINER_NAME`
 
-## Deployment Procedure
-1. Merge to `main`.
-2. GitHub Actions builds and pushes the image to ECR.
-3. GitHub Actions registers a new task definition and updates the ECS service.
-4. ECS performs a rolling deployment.
+## Terraform Outputs
+The most useful outputs are defined in [terraform/outputs.tf](terraform/outputs.tf).
 
-## Rolling Deployment
-The ECS service is configured with:
-- `deployment_minimum_healthy_percent = 50`
-- `deployment_maximum_percent = 200`
-This ensures at least half of the tasks stay healthy during updates.
+```bash
+terraform output alb_dns_name
+terraform output ecr_repository_url
+terraform output ecs_cluster_name
+terraform output ecs_service_name
+```
 
-## Rollback Procedure
-Automatic rollback is enabled with the deployment circuit breaker:
-- `deployment_circuit_breaker { enable = true, rollback = true }`
-If tasks fail health checks, ECS rolls back to the last stable task definition.
-
-Manual rollback:
-1. Identify the last stable task definition revision.
-2. Run:
-   - `aws ecs update-service --cluster <cluster> --service <service> --task-definition <task-def-arn>`
-
-## Logs
-View container logs in CloudWatch:
-- Log group: `/ecs/<project-name>`
-- Example command:
-  - `aws logs tail /ecs/<project-name> --since 1h --follow`
-
-## Monitoring
-CloudWatch alarms:
-- CPU utilization > 80%
-- Memory utilization > 80%
-
-Attach SNS topics to alarm actions using `alarm_actions` and `ok_actions` in Terraform.
-
-## Troubleshooting
-- Ensure the ALB target group health check path is `/health`.
-- Confirm ECS tasks have outbound internet access (NAT gateway in private subnets).
-- Check IAM roles for ECR pull and CloudWatch logging permissions.
-- Inspect CloudWatch logs for application errors.
-
-## Destroy Infrastructure
-From the terraform directory:
-1. `terraform destroy`
-
-## Future Improvements
-- Use OIDC for GitHub Actions instead of static AWS keys.
-- Replace NAT gateway with VPC endpoints where cost optimized.
-- Add HTTPS with ACM and ALB listener on 443.
-- Add autoscaling policies for ECS service.
+## Notes
+I kept the implementation deliberately small so the infrastructure is easy to explain in an interview or assignment review. The main goal here was to show the full path from source code to a running ECS service with a clean deployment flow and enough monitoring to diagnose failures.
