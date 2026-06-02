@@ -1,0 +1,20 @@
+{
+	"name": "dockerproject-app",
+	"version": "1.0.0",
+	"description": "Simple Express app for ECS Fargate",
+	"private": true,
+	"main": "app.js",
+	"type": "commonjs",
+	"engines": {
+		"node": ">=20"
+	},
+	"scripts": {
+		"start": "node app.js",
+		"dev": "node --watch app.js",
+		"test": "node --test",
+		"lint": "node --check app.js"
+	},
+	"dependencies": {
+		"express": "^4.19.2"
+	}
+}

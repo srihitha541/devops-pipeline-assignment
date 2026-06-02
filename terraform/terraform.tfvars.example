@@ -1,0 +1,7 @@
+project_name         = "dockerproject"
+aws_region           = "us-east-1"
+ecr_repository_name  = "dockerproject-app"
+image_tag            = "latest"
+log_retention_days   = 14
+alarm_actions        = []
+ok_actions           = []
