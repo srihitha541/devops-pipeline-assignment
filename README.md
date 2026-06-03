@@ -341,6 +341,10 @@ The ECS cluster is marked active and shows the service count and running tasks, 
 ![ECS service health](docs/screenshots/ecs-service.png)
 This view shows the service status as active, a desired count of two tasks, and a successful deployment status. It also confirms the service is running the expected task definition revision.
 
+### Rolling deployment status
+![Rolling deployment status](docs/screenshots/deployment-latest.png)
+This page shows the most recent ECS deployment with a successful status and the deployment strategy set to rolling update, which satisfies the rolling deployment requirement.
+
 ### ECS tasks running
 ![ECS tasks running](docs/screenshots/tasks-running.png)
 The tasks page lists the running tasks and their container details, confirming the application containers are started and healthy under the service.
@@ -356,6 +360,10 @@ The load balancer details confirm it is internet-facing, active, and provides th
 ### Application running
 ![Application running](docs/screenshots/application-running.png)
 This browser capture shows the ALB DNS in the address bar and the JSON response from the root path, which proves the service is reachable from the public endpoint.
+
+### CloudWatch alarms
+![CloudWatch alarms](docs/screenshots/cloudwatch.png)
+The CloudWatch overview shows the CPU and memory alarms in OK state, confirming the monitoring and alerting setup for the ECS service.
 
 ### Local validation and tests
 ![Local validation and tests](docs/screenshots/image.png)
