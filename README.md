@@ -323,47 +323,47 @@ What I checked:
 | Browser cannot reach the app | Wrong ALB DNS name or listener not created | Recheck Terraform outputs and confirm the ALB listener is on port 80 |
 
 ## 18. Screenshots
-These screenshots are included as placeholders for the submission. Each one should be captured after deployment to show the corresponding part of the stack.
+The screenshots below reflect the current deployment and validation steps captured from AWS and local verification.
 
-### Terraform apply
-![Terraform apply](docs/screenshots/terraform-apply.png)
-This shows that the infrastructure was applied successfully and the stack was created in AWS.
+### Terraform apply output
+![Terraform apply output](docs/screenshots/Terraform-apply.png)
+This capture shows the `terraform apply` run finishing successfully and printing the key outputs like the ALB DNS name, ECR repository URL, and ECS identifiers. It is the final confirmation that the infrastructure state in AWS matches the Terraform plan.
 
-### ECR repository
-![ECR repository](docs/screenshots/ecr-repository.png)
-This confirms the application image repository exists and is ready to receive pushed images.
+### ECR repository images
+![ECR repository images](docs/screenshots/ecr-repository.png)
+The ECR repository page lists the built images for `dockerproject-app`, which confirms the CI/CD pipeline pushed container images to the registry and that they are available for ECS to pull.
 
-### ECS cluster
-![ECS cluster](docs/screenshots/ecs-cluster.png)
-This proves the ECS cluster was created by Terraform.
+### ECS cluster overview
+![ECS cluster overview](docs/screenshots/ecs-cluster.png)
+The ECS cluster is marked active and shows the service count and running tasks, which verifies the cluster was created and is currently hosting the service.
 
-### ECS service
-![ECS service](docs/screenshots/ecs-service.png)
-This shows the service definition, desired count, and deployment status.
+### ECS service health
+![ECS service health](docs/screenshots/ecs-service.png)
+This view shows the service status as active, a desired count of two tasks, and a successful deployment status. It also confirms the service is running the expected task definition revision.
 
-### Running tasks
-![Running tasks](docs/screenshots/running-tasks.png)
-This confirms that ECS launched the Fargate tasks and they reached a running state.
+### ECS tasks running
+![ECS tasks running](docs/screenshots/tasks-running.png)
+The tasks page lists the running tasks and their container details, confirming the application containers are started and healthy under the service.
 
 ### Target group health
-![Target group health](docs/screenshots/target-group-health.png)
-This shows the load balancer health checks passing for the container tasks.
+![Target group health](docs/screenshots/target-groups.png)
+The target group details show IP targets on port 3000 with healthy counts, which confirms the ALB health checks are passing against the ECS tasks.
 
 ### ALB details
 ![ALB details](docs/screenshots/alb-details.png)
-This shows the public entry point that routes traffic to the ECS service.
+The load balancer details confirm it is internet-facing, active, and provides the DNS name used to access the application.
 
 ### Application running
 ![Application running](docs/screenshots/application-running.png)
-This proves the app responds from the ALB endpoint and returns the expected JSON.
+This browser capture shows the ALB DNS in the address bar and the JSON response from the root path, which proves the service is reachable from the public endpoint.
 
-### CloudWatch logs
-![CloudWatch logs](docs/screenshots/cloudwatch-logs.png)
-This confirms container logs are reaching CloudWatch.
+### Local validation and tests
+![Local validation and tests](docs/screenshots/image.png)
+This screenshot captures local validation steps in the terminal, including dependency installation, linting, and tests. It documents that the app is clean before deployment and that the health endpoint responds as expected.
 
-### GitHub Actions
-![GitHub Actions](docs/screenshots/github-actions.png)
-This shows the CI/CD pipeline completing the build and deployment steps.
+### GitHub Actions deployment
+![GitHub Actions deployment](docs/screenshots/github-actions.png)
+The Actions run shows a successful pipeline execution, proving the automated build, push, and deploy steps completed without errors.
 
 ## 19. Lessons Learned
 This project reinforced a few practical points:
