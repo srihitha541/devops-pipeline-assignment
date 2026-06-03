@@ -284,16 +284,16 @@ terraform apply tfplan
 ```
 
 ### Validation Checklist
-- [ ] `GET /` returns `{ "status": "running" }`
-- [ ] `GET /health` returns `{ "health": "ok" }`
-- [ ] Docker image builds without errors
-- [ ] Container starts and listens on port `3000`
-- [ ] Terraform plan completes successfully
-- [ ] Terraform apply creates the VPC, ALB, ECS service, ECR repo, and CloudWatch resources
-- [ ] ECS tasks reach a healthy state
-- [ ] ALB target group shows healthy targets
-- [ ] Application is reachable through the ALB DNS name
-- [ ] CloudWatch logs show container startup and request logs
+- [x] `GET /` returns `{ "status": "running" }`
+- [x] `GET /health` returns `{ "health": "ok" }`
+- [x] Docker image builds without errors
+- [x] Container starts and listens on port `3000`
+- [x] Terraform plan completes successfully
+- [x] Terraform apply creates the VPC, ALB, ECS service, ECR repo, and CloudWatch resources
+- [x] ECS tasks reach a healthy state
+- [x] ALB target group shows healthy targets
+- [x] Application is reachable through the ALB DNS name
+- [x] CloudWatch logs show container startup and request logs
 
 ## 16. Deployment Verification
 After deployment, I verified the service with the ALB DNS name from Terraform output.
@@ -311,7 +311,50 @@ What I checked:
 - The target group marks the tasks healthy.
 - CloudWatch contains the container logs.
 
-## 17. Troubleshooting Notes
+## 17. Runbook (Deploy, Rollback, Logs)
+This section outlines the operational steps used for deployment, rollback, and log inspection.
+
+### Deploy
+Preferred path is GitHub Actions. A push to `main` triggers the workflow, builds and pushes the image, and updates the ECS service.
+
+If you need a manual deploy, use these steps:
+
+```bash
+cd terraform
+terraform apply
+```
+
+Then build and push the image through the workflow or by running the same steps locally and updating the task definition revision.
+
+### Rollback
+The service uses the ECS deployment circuit breaker, so unhealthy deployments roll back automatically.
+
+For a manual rollback to a previous revision:
+1. AWS Console -> ECS -> Cluster -> Service -> Deployments.
+2. Select the last known good task definition revision.
+3. Update the service to that revision and wait for it to stabilize.
+
+CLI alternative:
+```bash
+aws ecs update-service \
+    --cluster <ecs-cluster-name> \
+    --service <ecs-service-name> \
+    --task-definition <ecs-task-family>:<revision>
+```
+
+### Logs
+CloudWatch Logs is the primary source for container output and startup errors.
+
+Console path:
+1. CloudWatch -> Logs -> Log groups -> `/ecs/dockerproject`.
+2. Open the latest log stream to view container logs.
+
+CLI tail:
+```bash
+aws logs tail /ecs/dockerproject --since 1h --follow
+```
+
+## 18. Troubleshooting Notes
 | Issue | What Usually Causes It | Fix |
 |---|---|---|
 | ALB returns `503 Service Unavailable` | ECS tasks are not healthy or the target group is pointing at the wrong path | Check the target group health check path and confirm the service has running tasks |
@@ -322,7 +365,7 @@ What I checked:
 | Logs are missing in CloudWatch | Task execution role is missing log permissions or the log group was not created | Check the execution role attachment and confirm the log group exists |
 | Browser cannot reach the app | Wrong ALB DNS name or listener not created | Recheck Terraform outputs and confirm the ALB listener is on port 80 |
 
-## 18. Screenshots
+## 19. Screenshots
 The screenshots below reflect the current deployment and validation steps captured from AWS and local verification.
 
 ### Terraform apply output
@@ -373,7 +416,7 @@ This screenshot captures local validation steps in the terminal, including depen
 ![GitHub Actions deployment](docs/screenshots/github-actions.png)
 The Actions run shows a successful pipeline execution, proving the automated build, push, and deploy steps completed without errors.
 
-## 19. Lessons Learned
+## 20. Lessons Learned
 This project reinforced a few practical points:
 
 - Keeping the app and infrastructure in separate folders makes the repo easier to review.
@@ -382,7 +425,7 @@ This project reinforced a few practical points:
 - GitHub Actions works well for this flow as long as the AWS secrets and ECS names stay aligned with Terraform outputs.
 - CloudWatch logs are the first place to check when a task fails before it becomes healthy.
 
-## 20. Possible Improvements
+## 21. Possible Improvements
 If I were taking this beyond the assignment, I would probably do the following:
 
 - Switch GitHub Actions to OIDC instead of static AWS keys.
@@ -392,7 +435,7 @@ If I were taking this beyond the assignment, I would probably do the following:
 - Add a deployment stage for staged approval before pushing to `main`.
 - Add more API routes and real application tests.
 
-## Cleanup Instructions
+## 22. Cleanup Instructions
 To remove everything created by Terraform:
 
 ```bash
@@ -402,7 +445,7 @@ terraform destroy
 
 If you pushed images to ECR during testing, you may also want to delete the repository after destroying the stack.
 
-## GitHub Actions Notes
+## 23. GitHub Actions Notes
 The workflow in [.github/workflows/deploy.yml](.github/workflows/deploy.yml) runs on pushes to `main` and on manual dispatch. It installs the app dependencies, runs lint and tests, builds the Docker image, pushes it to ECR, registers a new task definition, and updates the ECS service.
 
 ### Required GitHub Secrets
@@ -415,7 +458,7 @@ The workflow in [.github/workflows/deploy.yml](.github/workflows/deploy.yml) run
 - `ECS_TASK_FAMILY`
 - `ECS_CONTAINER_NAME`
 
-## Terraform Outputs
+## 24. Terraform Outputs
 The most useful outputs are defined in [terraform/outputs.tf](terraform/outputs.tf).
 
 ```bash
@@ -425,5 +468,5 @@ terraform output ecs_cluster_name
 terraform output ecs_service_name
 ```
 
-## Notes
+## 25. Notes
 I kept the implementation deliberately small so the infrastructure is easy to explain in an interview or assignment review. The main goal here was to show the full path from source code to a running ECS service with a clean deployment flow and enough monitoring to diagnose failures.
