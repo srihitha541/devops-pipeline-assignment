@@ -19,7 +19,7 @@ app.use((req, res, next) => {
 });
 
 app.get("/", (_req, res) => {
-	res.status(200).json({ status: "running" });
+	res.status(200).json({ status: "Application Running" });
 });
 
 app.get("/health", (_req, res) => {
