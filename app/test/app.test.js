@@ -17,7 +17,7 @@ test("GET / returns running status", async (t) => {
 	const body = await response.json();
 
 	assert.equal(response.status, 200);
-	assert.deepEqual(body, { status: "running" });
+	assert.deepEqual(body, { status: "Application Running" });
 });
 
 test("GET /health returns ok", async (t) => {
